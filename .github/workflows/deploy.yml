@@ -12,12 +12,14 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3
+    - name: Print GitHub context
+      run: echo "${{ toJson(github) }}
 
     - name: Configure AWS Credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v2
       with:
         role-to-assume: arn:aws:iam::842747873421:role/github-role
-        aws-region: us-east-1 
+        aws-region: us-east-1
 
     - name: Login to Amazon ECR
       id: login-ecr
