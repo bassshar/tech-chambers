@@ -39,9 +39,9 @@ jobs:
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.0.0
       with:
-        host: ${{ secrets.VM_HOST }}
+        host: ${{ secrets.EC2_HOST }}
         username: ec2-user
-        key: ${{ secrets.VM_SSH_KEY }}
+        key: ${{ secrets.EC2_SSH }}
         script: |
           docker pull 842747873421.dkr.ecr.us-east-1.amazonaws.com/eu-chambers:latest
           docker stop eu_chamber || true
