@@ -13,7 +13,7 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
     - name: Print GitHub context
-      run: echo "${{ toJson(github) }}
+      run: echo "${{ toJson(github) }}"
 
     - name: Configure AWS Credentials via OIDC
       uses: aws-actions/configure-aws-credentials@v2
