@@ -43,6 +43,7 @@ jobs:
         username: ec2-user
         key: ${{ secrets.EC2_SSH }}
         script: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 842747873421.dkr.ecr.us-east-1.amazonaws.com
           docker pull 842747873421.dkr.ecr.us-east-1.amazonaws.com/eu-chambers:latest
           docker stop eu_chamber || true
           docker rm eu_chamber || true
