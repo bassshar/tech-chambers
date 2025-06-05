@@ -47,7 +47,7 @@ permissions:
   id-token: write
   contents: read
 
-# Workflow Steps
+# Workflow Steps (Explaination of CI/CD)
 1. Checkout Code
 
 - name: Checkout Code
