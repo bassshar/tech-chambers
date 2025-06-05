@@ -1,0 +1,14 @@
+
+This AWS CloudFormation template provisions an **Amazon ECS Cluster** that dynamically launches **EC2 instances** as required using **Auto Scaling** and a **Capacity Provider**. It's ideal for running containerized applications on EC2 without pre-allocating instances.
+
+---
+
+## Features
+
+- ECS Cluster with container insights enabled
+- Auto Scaling Group to automatically launch EC2 instances
+- Capacity Provider for ECS-managed scaling
+- Configurable EC2 instance types, volumes, and key pairs
+- ECS-optimized Amazon Linux 2023 AMI (via SSM)
+- Optional EBS volumes for root and data
+- IAM role for ECS task execution
