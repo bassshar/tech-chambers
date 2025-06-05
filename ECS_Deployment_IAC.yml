@@ -1,0 +1,296 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  EC2 ECS cluster that starts out empty, with no EC2 instances yet.
+  An ECS capacity provider automatically launches more EC2 instances as required
+  on the fly when you request ECS to launch services or standalone tasks.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    Label:
+      default: "ECS Cluster Configuration"
+    ParameterGroups:
+      - Label:
+          default: "Instance Configuration"
+        Parameters:
+          - InstanceType
+          - InstanceProfileArn
+          - DesiredCapacity
+          - MaxSize
+          - KeyName
+      - Label:
+          default: "Root Volume Configuration"
+        Parameters:
+          - RootEbsVolumeSize
+          - RootDeviceName
+          - ConfigureRootVolume
+      - Label:
+          default: "Data Volume Configuration"
+        Parameters:
+          - EbsVolumeSize
+          - DeviceName
+          - EbsVolumeType
+          - ConfigureDataVolume
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - SubnetIds
+          - ContainerHostSecurityGroup
+    ParameterLabels:
+      InstanceType:
+        default: "EC2 Instance Type"
+      InstanceProfileArn:
+        default: "Arn of the existing EC2 Instance Profile"
+      DesiredCapacity:
+        default: "Desired EC2 Instance Capacity"
+      MaxSize:
+        default: "Maximum EC2 Instances"
+      VpcId:
+        default: "VPC ID"
+      SubnetIds:
+        default: "Subnet IDs"
+      KeyName:
+        default: "Key Name"
+      ContainerHostSecurityGroup:
+        default: "Container Host Security Group ID"
+      RootEbsVolumeSize:
+        default: "Root EBS Volume Size (GB)"
+      RootDeviceName:
+        default: "Root Device Name"
+      ConfigureRootVolume:
+        default: "Customize Root Volume?"
+      EbsVolumeSize:
+        default: "Data EBS Volume Size (GB)"
+      DeviceName:
+        default: "Data Device Name"
+      EbsVolumeType:
+        default: "EBS Volume Type"
+      ConfigureDataVolume:
+        default: "Customize Data Volume?"
+
+Parameters:
+  InstanceType:
+    Type: String
+    Description: EC2 instance type
+    Default: t2.medium
+    AllowedValues:
+      - t1.micro
+      - t2.2xlarge
+      - t2.large
+      - t2.medium
+      - t2.micro
+      - t2.nano
+      - t2.small
+      - t2.xlarge
+      - t3.2xlarge
+      - t3.large
+      - t3.medium
+      - t3.micro
+      - t3.nano
+      - t3.small
+      - t3.xlarge
+
+  InstanceProfileArn:
+    Type: String
+    Description: ARN of the existing Instance Profile.
+
+  DesiredCapacity:
+    Type: Number
+    Default: 3
+    Description: Number of EC2 instances to launch in your ECS cluster.
+
+  MaxSize:
+    Type: Number
+    Default: 3
+    Description: Maximum number of EC2 instances that can be launched in your ECS cluster.
+
+  RootEbsVolumeSize:
+    Type: Number
+    Description: Optional - Size in GB of the root EBS volume.
+    Default: 30
+
+  EbsVolumeSize:
+    Type: Number
+    Description: Optional - Size in GB of the data EBS volume used by Docker.
+    Default: 22
+
+  EbsVolumeType:
+    Type: String
+    Description: Optional - Type of the EBS volume.
+    Default: ''
+    AllowedValues:
+      - ''
+      - standard
+      - io1
+      - gp2
+      - sc1
+      - st1
+
+  RootDeviceName:
+    Type: String
+    Default: /dev/xvda
+    Description: Root EBS device name.
+
+  DeviceName:
+    Type: String
+    Description: Data volume device name.
+
+  ConfigureRootVolume:
+    Type: String
+    Default: 'false'
+    Description: Whether to customize the root volume.
+
+  ConfigureDataVolume:
+    Type: String
+    Default: 'true'
+    Description: Whether to customize the data volume.
+
+  KeyName:
+    Type: String
+    Default: ''
+    Description: Optional - Name of an existing EC2 key pair for SSH.
+
+  ContainerHostSecurityGroup:
+    Type: String
+    Description: Security Group ID for ECS container hosts.
+
+  ECSAMI:
+    Description: ECS-optimized AMI
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for ECS cluster
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for ECS cluster instances
+
+Conditions:
+  IsConfiguringRootVolume: !Equals [!Ref ConfigureRootVolume, 'true']
+  IsConfiguringDataVolume: !Equals [!Ref ConfigureDataVolume, 'true']
+  HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: chamber-private
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: [ECSCluster]
+    Properties:
+      AutoScalingGroupName: chamber-production-asg
+      VPCZoneIdentifier: !Ref SubnetIds
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ContainerInstances
+        Version: !GetAtt ContainerInstances.LatestVersionNumber
+      MinSize: 0
+      MaxSize: !Ref MaxSize
+      DesiredCapacity: !Ref DesiredCapacity
+      NewInstancesProtectedFromScaleIn: true
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+
+  ContainerInstances:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: chamber-private-lt
+      LaunchTemplateData:
+        ImageId: !Ref ECSAMI
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Arn: !Ref InstanceProfileArn
+        KeyName: !If [HasKeyName, !Ref KeyName, !Ref AWS::NoValue]
+        SecurityGroupIds:
+          - !Ref ContainerHostSecurityGroup
+        BlockDeviceMappings:
+          - !If
+            - IsConfiguringRootVolume
+            - DeviceName: !Ref RootDeviceName
+              Ebs:
+                VolumeSize: !Ref RootEbsVolumeSize
+                VolumeType: !Ref EbsVolumeType
+            - !Ref AWS::NoValue
+          - !If
+            - IsConfiguringDataVolume
+            - DeviceName: !Ref DeviceName
+              Ebs:
+                VolumeSize: !Ref EbsVolumeSize
+                VolumeType: !Ref EbsVolumeType
+            - !Ref AWS::NoValue
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            echo "ECS_CLUSTER=${ECSCluster}" >> /etc/ecs/ecs.config
+            yum install -y aws-cfn-bootstrap
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource ContainerInstances --configsets full_install --region ${AWS::Region} &
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+
+  CapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      Name: chamber-private-cp
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
+        ManagedScaling:
+          InstanceWarmupPeriod: 60
+          MinimumScalingStepSize: 1
+          MaximumScalingStepSize: 100
+          Status: ENABLED
+          TargetCapacity: 100
+        ManagedTerminationProtection: ENABLED
+
+  CapacityProviderAssociation:
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+    Properties:
+      Cluster: !Ref ECSCluster
+      CapacityProviders:
+        - !Ref CapacityProvider
+      DefaultCapacityProviderStrategy:
+        - Base: 0
+          CapacityProvider: !Ref CapacityProvider
+          Weight: 1
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*
+              StringEquals:
+                aws:SourceAccount: !Sub ${AWS::AccountId}
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+Outputs:
+  ClusterName:
+    Description: The ECS cluster into which to launch resources
+    Value: !Ref ECSCluster
+
+  ECSTaskExecutionRole:
+    Description: The IAM role for ECS task execution
+    Value: !Ref ECSTaskExecutionRole
+
+  CapacityProvider:
+    Description: ECS cluster capacity provider
+    Value: !Ref CapacityProvider
+
